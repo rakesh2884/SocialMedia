@@ -4,14 +4,17 @@ from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth.hashers import make_password,check_password
 from django.conf import settings
-from .models import User
+from .models import User,Post
+from rest_framework import permissions ,authentication
 from django.core.files.storage import FileSystemStorage
 import os
 import re
-from .serializers import userProfileSerializer,LoginSerializer,ViewAccountSerializer,AccountUpdateSerializer,AccountDeleteSerializer
+from .serializers import userProfileSerializer,LoginSerializer,ViewAccountSerializer,AccountUpdateSerializer,AccountDeleteSerializer,PostCreateSerializer,PostViewSerializer,PostUpdateSerializer \
+    ,PostDeleteSerializer
 
 
 class RegisterView(APIView):
+    permission_classes=[permissions.AllowAny]
     def post(self, request, *args, **kwargs):
         serializer = userProfileSerializer(data=request.data)
         
@@ -19,9 +22,9 @@ class RegisterView(APIView):
             username=serializer.data['username']
             password=serializer.data['password']
             image=request.FILES['image']
-            fs = FileSystemStorage(location=settings.UPLOAD_FOLDER)
+            fs = FileSystemStorage(location=settings.UPLOAD_PROFILE_FOLDER)
             filename = fs.save(image.name, image)
-            i=os.path.join( settings.UPLOAD_FOLDER,image.name)
+            i=os.path.join( settings.UPLOAD_PROFILE_FOLDER,image.name)
             try:
                 user=User.objects.get(username=username)
                 if user:
@@ -64,7 +67,9 @@ class LoginView(APIView):
 
 
 class AccountView(APIView):
+    
     def get(self, request, *args, **kwargs):
+        
         serializer=ViewAccountSerializer(data=request.data)
         if serializer.is_valid():
             username=serializer.data['username']
@@ -106,7 +111,7 @@ class AccountView(APIView):
                         image=request.FILES['image']
                         fs = FileSystemStorage(location=settings.UPLOAD_FOLDER)
                         filename = fs.save(image.name, image)
-                        i=os.path.join( settings.UPLOAD_FOLDER,image.name)
+                        i=os.path.join( settings.UPLOAD_PROFILE_FOLDER,image.name)
                         user.image=i
                         user.save()
                         return Response({'message':'image changed successfully'},status=status.HTTP_201_CREATED)
@@ -137,3 +142,77 @@ class AccountView(APIView):
                 return Response({'message':'Invalid Credentials'},status=status.HTTP_401_UNAUTHORIZED)
         else:
             return Response({'message':'Enter All Fields'},status=status.HTTP_400_BAD_REQUEST)
+
+class Posts(APIView):
+    def post(self, request, *args, **kwargs):
+        serializer=PostCreateSerializer(data=request.data)
+        if serializer.is_valid():
+            username=serializer.data['username']
+            password=serializer.data['password']
+            post_=request.FILES['post']
+            fs = FileSystemStorage(location=settings.UPLOAD_POST_FOLDER)
+            filename = fs.save(post_.name, post_)
+            p=os.path.join( settings.UPLOAD_POST_FOLDER,post_.name)
+            user=User.objects.get(username=username)
+            if user and check_password(password,user.password):
+                post=Post(user_id=user.id,caption=serializer.data['caption'],post=p)
+                post.save()
+                return Response({'message':'Post created successfully'},status=status.HTTP_201_CREATED)
+            else:
+                return Response({'message':'Invalid Credentials'},status=status.HTTP_400_BAD_REQUEST)
+    def get(self, request, *args, **kwargs):
+        serializer=PostViewSerializer(data=request.data)
+        if serializer.is_valid():
+            id=serializer.data['id']
+            posts=Post.objects.get(id=id)
+            if posts:
+                return Response({'caption':posts.caption,'post':str(posts.post),'like_count':posts.likes_count,'comments_count':posts.comments_count})
+            else:
+                return Response({'message':'not exist'})
+    def patch(self, request, *args, **kwargs):
+        serializer=PostUpdateSerializer(data=request.data)
+        if serializer.is_valid():
+            username=serializer.data['username']
+            password=serializer.data['password']
+            id=serializer.data['id']
+            try:
+                user = User.objects.get(username=username)
+                if user and check_password(password,user.password):
+                    choice=serializer.data['choice']
+                    posts=Post.objects.get(id=id)
+                    if choice=="caption":
+                        posts.caption=serializer.data['new_caption']
+                        posts.save()
+                        return Response({'message':'caption changed successfully'},status=status.HTTP_201_CREATED)
+                    elif choice == "post":
+                        post_=request.FILES['new_post']
+                        fs = FileSystemStorage(location=settings.UPLOAD_POST_FOLDER)
+                        filename = fs.save(post_.name, post_)
+                        p=os.path.join( settings.UPLOAD_POST_FOLDER,post_.name)
+                        posts.save()
+                        return Response({'message':'post changed successfully'},status=status.HTTP_201_CREATED)
+                else:
+                    return Response({'message':'Invalid Credentials'},status=status.HTTP_401_UNAUTHORIZED)  
+            except:
+                return Response({'message':'Invalid Credentials'},status=status.HTTP_401_UNAUTHORIZED)
+        else:
+            return Response({'message':'Enter All Fields'},status=status.HTTP_400_BAD_REQUEST)
+            
+    def delete(self, request, *args, **kwargs):
+        serializer=PostDeleteSerializer(data=request.data)
+        if serializer.is_valid():
+            username=serializer.data['username']
+            password=serializer.data['password']
+            id=serializer.data['id']
+            try:
+                user = User.objects.get(username=username)
+                if user and check_password(password,user.password):
+                    posts=Post.objects.get(id=id)
+                    posts.delete()
+                    return Response({'message':'post deleted successfully'},status=status.HTTP_202_ACCEPTED)
+
+            except:
+                return Response({'message':'Invalid Credentials'},status=status.HTTP_401_UNAUTHORIZED)
+        else:
+            return Response({'message':'Enter All Fields'},status=status.HTTP_400_BAD_REQUEST)
+
