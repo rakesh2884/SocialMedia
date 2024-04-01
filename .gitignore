@@ -3,7 +3,9 @@
 *.pyc
 __pycache__
 db1.sqlite3
+.env
 SocialMedia/__pycache__
 social_paltform/__pycache__
-social_paltform/migrations
-social_paltform/media
+migrations
+media
+social_app

@@ -1,89 +1,51 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
-from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework import status, generics,permissions
 from django.contrib.auth.hashers import make_password,check_password
 from django.conf import settings
-from .models import User,Post
-from rest_framework import permissions ,authentication
+from .models import User,Post,Like,Comment
 from django.core.files.storage import FileSystemStorage
 import os
-import re
-from .serializers import userProfileSerializer,LoginSerializer,ViewAccountSerializer,AccountUpdateSerializer,AccountDeleteSerializer,PostCreateSerializer,PostViewSerializer,PostUpdateSerializer \
-    ,PostDeleteSerializer
+from .serializers import (RegisterSerializer,LoginSerializer,LogoutSerializer,CredentialSerializer,AccountUpdateSerializer,PostCreateSerializer,ViewSerializer,PostUpdateSerializer \
+    ,PostDeleteSerializer,LikeSerializer,CommentSerializer,ViewLikedSerializer)
 
 
-class RegisterView(APIView):
-    permission_classes=[permissions.AllowAny]
-    def post(self, request, *args, **kwargs):
-        serializer = userProfileSerializer(data=request.data)
-        
-        if serializer.is_valid():
-            username=serializer.data['username']
-            password=serializer.data['password']
-            image=request.FILES['image']
-            fs = FileSystemStorage(location=settings.UPLOAD_PROFILE_FOLDER)
-            filename = fs.save(image.name, image)
-            i=os.path.join( settings.UPLOAD_PROFILE_FOLDER,image.name)
-            try:
-                user=User.objects.get(username=username)
-                if user:
-                    return Response({'message':'user already exist'},status=status.HTTP_400_BAD_REQUEST)
-            except:    
-                if len(password) < 8:
-                    return Response({'message':'Make sure your password is at lest 8 letters'},status=status.HTTP_400_BAD_REQUEST) 
-                elif re.search('[0-9]',password) is None:
-                    return Response({'message':'Make sure your password has a number in it'},status=status.HTTP_400_BAD_REQUEST)
-                elif re.search('[A-Z]',password) is None: 
-                    return Response({'message':'Make sure your password has a capital letter in it'},status=status.HTTP_400_BAD_REQUEST)
-                elif re.search('[^a-zA-Z0-9]',password) is None:
-                    return Response({'message':'Make sure your password has a special character in it'},status=status.HTTP_400_BAD_REQUEST) 
-                elif password!=serializer.data['confirm_password']:
-                    return Response({'message':'password not match'},status=status.HTTP_400_BAD_REQUEST)
-                user=User(username=username,password=make_password(password),email=serializer.data['email'],roles=serializer.data['roles'],image=i)
-                user.save()
-                return Response({'message':'Register successful'}, status=status.HTTP_201_CREATED)
-        else:
-            return Response({'message':'Enter All Fields'},status=status.HTTP_400_BAD_REQUEST)
+class RegisterView(generics.GenericAPIView):
+    serializer_class = RegisterSerializer
+    def post(self,request):
+        user=request.data
+        serializer = self.serializer_class(data=user)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        user_data = serializer.data
+        return Response(user_data, status=status.HTTP_201_CREATED)
+    
 
-class LoginView(APIView):
-    def post(self, request, *args, **kwargs):
-        serializer = LoginSerializer(data=request.data)
-        if serializer.is_valid():
-            username=serializer.data['username']
-            password=serializer.data['password']
-            try:
-                user = User.objects.get(username=username)
-                if user and check_password(password,user.password):
-                    refresh = RefreshToken.for_user(user)
-                    token = str(refresh.access_token)
-                    return Response({'message':'Login successful','token':token,'image':str(user.image)},status=status.HTTP_202_ACCEPTED)
-                else:
-                    return Response({'message':'Invalid Credentials'},status=status.HTTP_401_UNAUTHORIZED)
-            except:
-                return Response({'message':'Invalid Credentials'},status=status.HTTP_401_UNAUTHORIZED)
-        else:
-            return Response({'message':'Enter All Fields'},status=status.HTTP_400_BAD_REQUEST)
+class LoginAPIView(generics.GenericAPIView):
+    serializer_class = LoginSerializer
+    def post(self,request):
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return Response(serializer.data,status=status.HTTP_200_OK)
 
+class LogoutAPIView(generics.GenericAPIView):
+    serializer_class = LogoutSerializer
+    permission_classes = (permissions.IsAuthenticated,)
+    def post(self, request):
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)      
 
 class AccountView(APIView):
-    
-    def get(self, request, *args, **kwargs):
-        
-        serializer=ViewAccountSerializer(data=request.data)
+    def get(self, request, *args, **kwargs):    
+        serializer=CredentialSerializer(data=request.data)
+        permission_classes = (permissions.IsAuthenticated,)
         if serializer.is_valid():
             username=serializer.data['username']
             password=serializer.data['password']
-            try:
-                user = User.objects.get(username=username)
-                if user and check_password(password,user.password):
-                    return Response({'username':user.username,'password':password,'role':user.Roles[user.roles-1],'email':user.email,'image':str(user.image)},status=status.HTTP_202_ACCEPTED)
-                else:
-                    return Response({'message':'Invalid Credentials'},status=status.HTTP_401_UNAUTHORIZED)
-            except:
-                return Response({'message':'Invalid Credentials'},status=status.HTTP_401_UNAUTHORIZED)
-        else:
-            return Response({'message':'Enter All Fields'},status=status.HTTP_400_BAD_REQUEST)
+            user = User.objects.get(username=username)
+            return Response({'username':user.username,'password':password,'role':user.Roles[user.roles-1],'email':user.email,'image':str(user.image)},status=status.HTTP_202_ACCEPTED)
             
 
     def patch(self, request, *args, **kwargs):
@@ -128,7 +90,7 @@ class AccountView(APIView):
     
 
     def delete(self, request, *args, **kwargs):
-        serializer=AccountDeleteSerializer(data=request.data)
+        serializer=CredentialSerializer(data=request.data)
         if serializer.is_valid():
             username=serializer.data['username']
             password=serializer.data['password']
@@ -161,7 +123,7 @@ class Posts(APIView):
             else:
                 return Response({'message':'Invalid Credentials'},status=status.HTTP_400_BAD_REQUEST)
     def get(self, request, *args, **kwargs):
-        serializer=PostViewSerializer(data=request.data)
+        serializer=ViewSerializer(data=request.data)
         if serializer.is_valid():
             id=serializer.data['id']
             posts=Post.objects.get(id=id)
@@ -216,3 +178,62 @@ class Posts(APIView):
         else:
             return Response({'message':'Enter All Fields'},status=status.HTTP_400_BAD_REQUEST)
 
+class Likes(APIView):
+    def post(self,request,*args, **kwargs):
+        serializer=LikeSerializer(data=request.data)
+        if serializer.is_valid():
+            user_id=serializer.data['user_id']
+            post_id=serializer.data['post_id']
+            try:
+                posts=Post.objects.get(id=post_id)
+                if posts:
+                        try: 
+                            user=Like.objects.get(user_id=user_id)
+                            if user:
+                                return Response({'message':'user already liked that post'})
+                            else:
+                                like=Like(user_id=user_id,post_id=post_id,like="True")
+                                like.save()
+                                posts.likes_count+=1
+                                posts.save()
+                                return Response({'message':'You liked post successfully'},status=status.HTTP_201_CREATED)
+                        except:
+                            return Response({'message':'user already liked that post'})
+                else:
+                    return Response({'message':'Post not exist'},status=status.HTTP_400_BAD_REQUEST)
+            except:
+                return Response({'message':'Post not exist'},status=status.HTTP_400_BAD_REQUEST)
+
+class Comments(APIView):
+    def post(self,request,*args, **kwargs):
+        serializer=CommentSerializer(data=request.data)
+        if serializer.is_valid():
+            user_id=serializer.data['user_id']
+            post_id=serializer.data['post_id']
+            comments=serializer.data['comment']
+            try:
+                posts=Post.objects.get(id=post_id)
+                if posts:
+                    comment=Comment(user_id=user_id,post_id=post_id,comment=comments)
+                    comment.save()
+                    posts.comments_count+=1
+                    posts.save()
+                    return Response({'message':'You commented on  post successfully'},status=status.HTTP_201_CREATED)
+                else:
+                    return Response({'message':'Post not exist'},status=status.HTTP_400_BAD_REQUEST)
+            except:
+                return Response({'message':'Post not exist'},status=status.HTTP_400_BAD_REQUEST)
+
+class viewLikedPost(APIView):
+    def get(self,request,*args, **kwargs):
+        serializer=ViewLikedSerializer(data=request.data)
+        if serializer.is_valid():
+            user_id=serializer.data['user_id']
+            try:
+                posts=Post.objects.all(user_id=user_id)
+                for i in posts:
+                    return Response("i",status=status.HTTP_200_OK)
+            except:
+                return Response({'message':'you didnt like any post'},status=status.HTTP_400_BAD_REQUEST)
+            
+                    
