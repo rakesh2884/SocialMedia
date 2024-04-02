@@ -2,13 +2,14 @@ from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed
 from .models import User
 from django.contrib.auth import authenticate
+from django.contrib.auth.hashers import make_password
 from rest_framework_simplejwt.tokens import RefreshToken, TokenError
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(max_length=68, min_length=6, write_only=True)
     class Meta:
         model = User
-        fields = ['email', 'username', 'password']
+        fields = ['id','email', 'username', 'password','roles','image']
     def validate(self, attrs):
         email = attrs.get('email', '')
         username = attrs.get('username', '')
@@ -18,7 +19,6 @@ class RegisterSerializer(serializers.ModelSerializer):
         return attrs
     def create(self, validated_data):
         return User.objects.create_user(**validated_data)
-
 class LoginSerializer(serializers.ModelSerializer):
     password = serializers.CharField(max_length=68, min_length=6,write_only=True)
     username = serializers.CharField(max_length=255, min_length=3)
@@ -37,6 +37,8 @@ class LoginSerializer(serializers.ModelSerializer):
         password = attrs.get('password','')
         user = authenticate(username=username,password=password)
         if not user:
+            print (username)
+            print (password)
             raise AuthenticationFailed('Invalid credentials, try again')
         if not user.is_active:
             raise AuthenticationFailed('Account disabled, contact admin')
@@ -45,7 +47,6 @@ class LoginSerializer(serializers.ModelSerializer):
             'username': user.username,
             'tokens': user.tokens
         }
-
 class LogoutSerializer(serializers.Serializer):
     refresh = serializers.CharField()
     def validate(self, attrs):
@@ -86,12 +87,18 @@ class PostDeleteSerializer(serializers.Serializer):
     username = serializers.CharField(required=True)
     password = serializers.CharField(required=True)
 class LikeSerializer(serializers.Serializer):
-    post_id = serializers.IntegerField(required=True)
     user_id = serializers.IntegerField(required=True)
+    post_id = serializers.IntegerField(required=True)
 class CommentSerializer(serializers.Serializer):
     post_id = serializers.IntegerField(required=True)
     user_id = serializers.IntegerField(required=True)
     comment=serializers.CharField(required=True)
 class ViewLikedSerializer(serializers.Serializer):
     user_id = serializers.IntegerField(required=True)
+class FollowSerializer(serializers.Serializer):
+    follower_id=serializers.IntegerField(required=True)
+    following_id=serializers.IntegerField(required=True)
+class ViewFollowingPostSerializer(serializers.Serializer):
+    user_id = serializers.IntegerField(required=True)
+    following_id=serializers.IntegerField(required=True)
 
