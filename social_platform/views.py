@@ -3,11 +3,11 @@ from rest_framework.response import Response
 from rest_framework import status, generics,permissions
 from django.contrib.auth.hashers import make_password,check_password
 from django.conf import settings
-from .models import User,Post,Like,Comment
+from .models import User,Post,Like,Comment,Follow
 from django.core.files.storage import FileSystemStorage
 import os
 from .serializers import (RegisterSerializer,LoginSerializer,LogoutSerializer,CredentialSerializer,AccountUpdateSerializer,PostCreateSerializer,ViewSerializer,PostUpdateSerializer \
-    ,PostDeleteSerializer,LikeSerializer,CommentSerializer,ViewLikedSerializer)
+    ,PostDeleteSerializer,LikeSerializer,CommentSerializer,ViewLikedSerializer,FollowSerializer,ViewFollowingPostSerializer)
 
 
 class RegisterView(generics.GenericAPIView):
@@ -19,7 +19,6 @@ class RegisterView(generics.GenericAPIView):
         serializer.save()
         user_data = serializer.data
         return Response(user_data, status=status.HTTP_201_CREATED)
-    
 
 class LoginAPIView(generics.GenericAPIView):
     serializer_class = LoginSerializer
@@ -35,7 +34,7 @@ class LogoutAPIView(generics.GenericAPIView):
         serializer = self.serializer_class(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response(status=status.HTTP_204_NO_CONTENT)      
+        return Response(status=status.HTTP_204_NO_CONTENT)          
 
 class AccountView(APIView):
     def get(self, request, *args, **kwargs):    
@@ -187,16 +186,17 @@ class Likes(APIView):
             try:
                 posts=Post.objects.get(id=post_id)
                 if posts:
-                        try: 
-                            user=Like.objects.get(user_id=user_id)
+                        try:              
+                            user=Like.objects.filter(user_id=user_id,post_id=post_id)
                             if user:
-                                return Response({'message':'user already liked that post'})
+                                return Response({'message':'user already liked that post'})  
                             else:
                                 like=Like(user_id=user_id,post_id=post_id,like="True")
                                 like.save()
                                 posts.likes_count+=1
                                 posts.save()
                                 return Response({'message':'You liked post successfully'},status=status.HTTP_201_CREATED)
+                                
                         except:
                             return Response({'message':'user already liked that post'})
                 else:
@@ -229,11 +229,76 @@ class viewLikedPost(APIView):
         serializer=ViewLikedSerializer(data=request.data)
         if serializer.is_valid():
             user_id=serializer.data['user_id']
+            likes=Like.objects.get(user_id=user_id)
+            if likes:
+                try:
+                    posts=Post.objects.all(post_id=likes.post_id)
+                    for i in posts:
+                        return Response("i",status=status.HTTP_200_OK)
+                except:
+                    return Response({'message':'you didnt like any post'},status=status.HTTP_400_BAD_REQUEST)
+class Follows(APIView):
+    def post(self,request,*args, **kwargs):
+        serializer=FollowSerializer(data=request.data)
+        if serializer.is_valid():
+            follower_id=serializer.data['follower_id']
+            following_id=serializer.data['following_id']
             try:
-                posts=Post.objects.all(user_id=user_id)
-                for i in posts:
-                    return Response("i",status=status.HTTP_200_OK)
+                user=User.objects.get(id=following_id)
+                if user:
+                        try:              
+                            follows=Follow.objects.filter(follower_id=follower_id,following_id=following_id)
+                            if follows:
+                                return Response({'message':'user already followed that acount'})  
+                            else:
+                                follow=Follow(follower_id=follower_id,following_id=following_id,folow="True")
+                                follow.save()
+                                user.follower+=1
+                                user.save()
+                                user1=User.objects.get(id=follower_id)
+                                user1.following+=1
+                                user1.save()
+                                return Response({'message':'You followed successfully'},status=status.HTTP_201_CREATED)        
+                        except:
+                            return Response({'message':'user already followed that account'})
+                else:
+                    return Response({'message':'user you want to follow not exist'},status=status.HTTP_400_BAD_REQUEST)
             except:
-                return Response({'message':'you didnt like any post'},status=status.HTTP_400_BAD_REQUEST)
-            
-                    
+                return Response({'message':'user you want to follow not exist'},status=status.HTTP_400_BAD_REQUEST)
+class UnFollow(APIView):
+    def post(self,request,*args, **kwargs):
+        serializer=FollowSerializer(data=request.data)
+        if serializer.is_valid():
+            follower_id=serializer.data['follower_id']
+            following_id=serializer.data['following_id']
+            try:
+                follows=Follow.objects.filter(follower_id=follower_id,following_id=following_id)
+                if follows:
+                    follows.delete()
+                    user=User.objects.get(id=following_id)
+                    user.follower-=1
+                    user.save()
+                    user1=User.objects.get(id=follower_id)
+                    user1.following-=1
+                    user1.save()
+                    return Response({'message':'user unfollowed successfully'},status=status.HTTP_202_ACCEPTED)
+                else:
+
+                    return Response({'message':'you doesnt follow user'},status=status.HTTP_400_BAD_REQUEST)
+            except:
+                return Response({'message':'you doesnt follow user'},status=status.HTTP_400_BAD_REQUEST)
+class viewFollowingPosts(APIView):
+    def get(self,request,*args, **kwargs):
+        serializer=ViewFollowingPostSerializer(data=request.data)
+        if serializer.is_valid():
+            user_id=serializer.data['user_id']
+            follows=Follow.objects.filter(following_id=user_id)
+            if follows:
+                try:
+                    posts=Post.objects.all(user_id=serializer.data['following_id'])
+                    for i in posts:
+                        return Response("i",status=status.HTTP_200_OK)
+                except:
+                    return Response({'message':'you didnt like any post'},status=status.HTTP_400_BAD_REQUEST)
+            else:
+                return Response({'message':'Not exist'})
